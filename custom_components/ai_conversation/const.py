@@ -27,3 +27,20 @@ PLATFORMS = (
 
 GLM_BOX_START = "<|begin_of_box|>"
 GLM_BOX_END = "<|end_of_box|>"
+
+
+class AIConversationAPIError(HomeAssistantError):
+    """Raised when the upstream AI provider returns a handled API error."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        status: int | None = None,
+        payload: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = code
+        self.status = status
+        self.payload = payload or {}

@@ -204,7 +204,15 @@ class BasicEntity(Entity):
         
         LOGGER.debug('chat_completions req: %s', data)
         if result.error:
-            LOGGER.error('GLM-4.5 API Response Error: %s', result.error)
-            raise HomeAssistantError(f"Error talking to API: {result.error}")
+            error_data = dict(result.error)
+            error_code = error_data.get("code")
+            error_message = error_data.get("message") or "Unknown API error"
+            LOGGER.error('GLM-4.5 API Response Error: %s', error_data)
+            raise AIConversationAPIError(
+                error_message,
+                code=str(error_code) if error_code is not None else None,
+                status=getattr(result.response, "status", None),
+                payload=error_data,
+            )
         LOGGER.debug('chat_completions rsp: %s', result)
         return result

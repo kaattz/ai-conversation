@@ -1,3 +1,5 @@
+from typing import Any
+
 from homeassistant.components.conversation import (
     DOMAIN as ENTITY_DOMAIN,
     ConversationEntity as BaseEntity,
@@ -133,10 +135,29 @@ class ConversationEntity(BasicEntity, BaseEntity):
                    self.model, thinking, should_use_thinking)
         LOGGER.debug('Media Analysis - Stop: %s', stop_value)
         
-        result = await self.async_chat_completions([
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': content},
-        ], thinking=thinking if should_use_thinking else None, stop=stop_value)
+        try:
+            result = await self.async_chat_completions([
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': content},
+            ], thinking=thinking if should_use_thinking else None, stop=stop_value)
+        except AIConversationAPIError as err:
+            LOGGER.error(
+                'Media Analysis - API Error (code=%s): %s',
+                err.error_code,
+                err,
+            )
+            return self._build_media_error_response(
+                url=url,
+                message=str(err),
+                error_code=err.error_code,
+                raw_error=err.payload or {},
+            )
+        except HomeAssistantError as err:
+            LOGGER.error('Media Analysis - Request Error: %s', err)
+            return self._build_media_error_response(
+                url=url,
+                message=str(err),
+            )
        
         # 记录媒体分析结果
         LOGGER.debug('Media Analysis Result - URL: %s', url)
@@ -170,3 +191,28 @@ class ConversationEntity(BasicEntity, BaseEntity):
         res['usage'] = result.usage
         LOGGER.debug('Media Analysis - Final Result: %s', res)
         return res
+
+    def _build_media_error_response(
+        self,
+        *,
+        url: str,
+        message: str,
+        error_code: str | None = None,
+        raw_error: dict | None = None,
+    ) -> dict:
+        """Standardize the error payload returned to automations."""
+        response: dict[str, Any] = {
+            'url': url,
+            'message': message,
+            'tags': [],
+            'error': 'api_error',
+            'usage': None,
+        }
+        if error_code:
+            response['error_code'] = error_code
+            if error_code == "1113":
+                response['error'] = 'insufficient_balance'
+        if raw_error:
+            response['result'] = {'error': raw_error}
+        LOGGER.debug('Media Analysis - Error Response: %s', response)
+        return response
