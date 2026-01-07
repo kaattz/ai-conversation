@@ -26,3 +26,17 @@ explain_media:
       example: '[回家, 离家, 敲门, 快递, 外卖]'
       selector:
         object:
+    thinking:
+      description: 思考模式 (仅适用于glm-4.5v模型)
+      example: 'enabled'
+      selector:
+        select:
+          options:
+            - "enabled"
+            - "disabled"
+            - ""  # 空选项表示不使用thinking参数
+    stop:
+      description: 停止词（仅支持一个停止词）
+      example: '###STOP###'
+      selector:
+        text:

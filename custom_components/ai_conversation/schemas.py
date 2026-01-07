@@ -2,7 +2,7 @@ import json
 from homeassistant.helpers import llm
 from homeassistant.components import conversation
 from voluptuous_openapi import convert
-
+from .const import LOGGER
 
 class Dict(dict):
     def __getattr__(self, item):
@@ -19,6 +19,19 @@ class ChatCompletions(Dict):
     @property
     def tools(self):
         return self.setdefault("tools", [])
+    
+    def set_thinking_if_needed(self, model, thinking_type=None):
+        """根据模型类型决定是否添加thinking参数"""
+        # 只有glm-4.5和glm-4.5v模型需要thinking参数
+        if model and model.startswith("glm-4.5") and thinking_type:
+            # 根据官方文档，GLM-4.5的thinking参数应该是字典格式
+            if thinking_type == "enabled":
+                self["thinking"] = {"type": "enabled"}
+            elif isinstance(thinking_type, dict) and "type" in thinking_type:
+                self["thinking"] = thinking_type
+            else:
+                # 如果是其他值，不添加thinking参数
+                pass
 
 class ChatMessage(Dict):
     def __init__(self, content, role="user", **kwargs):
@@ -120,6 +133,33 @@ class ResponseJsonSchema(Dict):
 
 class ChatCompletionsResult(Dict):
     response = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 记录响应的关键信息
+        if "choices" in self and self["choices"]:
+            for i, choice in enumerate(self["choices"]):
+                if "message" in choice:
+                    message = choice["message"]
+                    LOGGER.debug('Response Choice %d - Role: %s', i, message.get("role", "unknown"))
+                    LOGGER.debug('Response Choice %d - Content: %s', i, message.get("content", ""))
+                    if "reasoning_content" in message:
+                        LOGGER.debug('Response Choice %d - Reasoning: %s', i, message.get("reasoning_content"))
+        
+        # 记录使用量信息
+        if "usage" in self:
+            usage = self["usage"]
+            LOGGER.debug('Token Usage - Prompt: %s, Completion: %s, Total: %s',
+                        usage.get("prompt_tokens", 0),
+                        usage.get("completion_tokens", 0),
+                        usage.get("total_tokens", 0))
+        
+        # 记录错误信息
+        if "error" in self:
+            error = self["error"]
+            LOGGER.error('API Error - Code: %s, Message: %s',
+                        error.get("code", "unknown"),
+                        error.get("message", ""))
 
     def to_dict(self):
         data = self.copy()

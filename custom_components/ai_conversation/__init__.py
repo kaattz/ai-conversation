@@ -1,6 +1,8 @@
 """The Conversation integration."""
 from __future__ import annotations
 
+import json
+import logging
 from aiohttp import hdrs
 from homeassistant.helpers.entity import Entity, async_generate_entity_id
 from homeassistant.helpers import device_registry as dr
@@ -87,7 +89,14 @@ class HassEntry:
             hdrs.AUTHORIZATION: f"Bearer {self.get_config(CONF_API_KEY)}",
         }
         res = await http.post('chat/completions', json=data, headers=headers)
-        result = ChatCompletionsResult(await res.json())
+        response_json = await res.json()
+        
+        # 记录完整的API响应用于调试
+        LOGGER.debug('API Response Status: %s', res.status)
+        LOGGER.debug('API Response Headers: %s', dict(res.headers))
+        LOGGER.debug('API Response JSON: %s', response_json)
+        
+        result = ChatCompletionsResult(response_json)
         result.response = res
         return result
 
@@ -176,14 +185,26 @@ class BasicEntity(Entity):
 
     async def async_chat_completions(self, messages, **kwargs):
         model = kwargs.pop("model", None) or self.model
+        thinking = kwargs.pop("thinking", None)
         data = ChatCompletions(model=model, messages=messages, **kwargs)
+        
+        # 只为glm-4.5系列模型添加thinking参数
+        data.set_thinking_if_needed(model, thinking)
+        
+        # 记录请求详情以便调试
+        LOGGER.info('GLM-4.5 Request - Model: %s, Thinking: %s', model, thinking)
+        LOGGER.info('GLM-4.5 Request Data: %s', dict(data))
+
         try:
             result = await self.entry.async_chat_completions(data)
         except Exception as err:
-            LOGGER.exception('chat_completions error: %s', data, exc_info=True)
+            LOGGER.error('GLM-4.5 API Error: %s', str(err))
+            LOGGER.error('GLM-4.5 Request Data: %s', dict(data))
             raise HomeAssistantError(f"Error talking to API: {err}") from err
+        
         LOGGER.debug('chat_completions req: %s', data)
         if result.error:
+            LOGGER.error('GLM-4.5 API Response Error: %s', result.error)
             raise HomeAssistantError(f"Error talking to API: {result.error}")
         LOGGER.debug('chat_completions rsp: %s', result)
         return result

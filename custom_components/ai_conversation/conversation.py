@@ -13,6 +13,13 @@ from . import HassEntry, BasicEntity
 from .const import *
 from .schemas import *
 
+
+def _strip_glm_box_tokens(text):
+    if not text:
+        return text
+    return text.replace(GLM_BOX_START, '').replace(GLM_BOX_END, '').strip()
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
     """Set up conversation entities."""
     for subentry_id, subentry in config_entry.subentries.items():
@@ -43,6 +50,11 @@ class ConversationEntity(BasicEntity, BaseEntity):
     ) -> ConversationResult:
         """Call the API."""
         options = self.subentry.data
+        
+        # 记录对话输入信息
+        LOGGER.debug('Conversation Input - Text: %s', user_input.text)
+        LOGGER.debug('Conversation Input - Model: %s', self.model)
+        
         try:
             await chat_log.async_provide_llm_data(
                 user_input.as_llm_context(DOMAIN),
@@ -51,12 +63,20 @@ class ConversationEntity(BasicEntity, BaseEntity):
                 user_input.extra_system_prompt,
             )
         except conversation.ConverseError as err:
+            LOGGER.error('Conversation Error: %s', err)
             return err.as_conversation_result()
 
         await self._async_handle_chat_log(chat_log)
-        return conversation.async_get_result_from_chat_log(user_input, chat_log)
+        result = conversation.async_get_result_from_chat_log(user_input, chat_log)
+        
+        # 记录对话结果
+        LOGGER.debug('Conversation Result - Response: %s', result.response)
+        if hasattr(result, 'error') and result.error:
+            LOGGER.error('Conversation Result Error: %s', result.error)
+        
+        return result
 
-    async def async_explain_media(self, prompt='', image=None, video=None, tags=None, **kwargs):
+    async def async_explain_media(self, prompt='', image=None, video=None, tags=None, thinking=None, stop=None, **kwargs):
         url = video or image
         if not url:
             return {'error': 'no url'}
@@ -91,14 +111,42 @@ class ConversationEntity(BasicEntity, BaseEntity):
             content.append({'type': 'image_url', 'image_url': {'url': url}})
         if not (system_prompt := self.subentry.data.get(CONF_PROMPT)):
             system_prompt = f'Reply in the specified language ({self.hass.config.language}).'
+        
+        # 根据模型类型决定是否使用thinking参数
+        should_use_thinking = thinking and thinking != "" and self.model.startswith("glm-4.5")
+
+        stop_value = None
+        if stop not in (None, ""):
+            stop_value_list: list[str]
+            if isinstance(stop, (list, tuple)):
+                if len(stop) != 1:
+                    raise HomeAssistantError("stop 参数只支持单个停止词。")
+                stop_value_list = [str(stop[0])]
+            elif isinstance(stop, str):
+                stop_value_list = [stop]
+            else:
+                stop_value_list = [str(stop)]
+            stop_value = stop_value_list
+        
+        # 记录调试信息
+        LOGGER.debug('Media Analysis - Model: %s, Thinking: %s, Should Use: %s',
+                   self.model, thinking, should_use_thinking)
+        LOGGER.debug('Media Analysis - Stop: %s', stop_value)
+        
         result = await self.async_chat_completions([
             {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': content},
-        ])
+        ], thinking=thinking if should_use_thinking else None, stop=stop_value)
+       
+        # 记录媒体分析结果
+        LOGGER.debug('Media Analysis Result - URL: %s', url)
+        LOGGER.debug('Media Analysis Result - Raw Message: %s', result.message)
+        
         res = {'url': url}
         tags = res.setdefault('tags', [])
         message = result.message
-        msg = message.content if message else ''
+        msg = _strip_glm_box_tokens(message.content if message else '')
+        
         if json_mode:
             arr = msg.split('```json')
             try:
@@ -107,11 +155,18 @@ class ConversationEntity(BasicEntity, BaseEntity):
                 msg = dat.get('message', '')
                 tags.extend(dat.get('tags', []))
                 res['tags_string'] = ' '.join(map(lambda x: f'#{x}', tags))
+                LOGGER.debug('Media Analysis - Parsed JSON: %s', dat)
             except Exception as exc:
                 res['error'] = str(exc)
                 res['result'] = result.to_dict()
+                LOGGER.error('Media Analysis - JSON Parse Error: %s', exc)
+        
         res['message'] = msg
         if message and 'reasoning_content' in message:
-            res['reasoning'] = message.reasoning_content
+            reasoning_text = _strip_glm_box_tokens(message.reasoning_content)
+            res['reasoning'] = reasoning_text
+            LOGGER.debug('Media Analysis - Reasoning Content: %s', reasoning_text)
+        
         res['usage'] = result.usage
+        LOGGER.debug('Media Analysis - Final Result: %s', res)
         return res

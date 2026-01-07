@@ -18,6 +18,7 @@ SERVICES = {
         CONF_NAME: "智谱AI",
         "models": [
             "glm-4.1v-thinking-flash", "glm-4.5-flash", "glm-4-flash-250414", "glm-4v-flash", "glm-z1-flash",
+            "glm-4.5v",
             "cogview-3-flash", "cogvideox-flash",
         ],
     },
@@ -35,6 +36,15 @@ OPEN_APIS = {
     k: v[CONF_NAME]
     for k, v in SERVICES.items()
 }
+
+# 创建模型选项映射，将模型名称映射到显示名称
+MODEL_OPTIONS = {}
+for endpoint, config in SERVICES.items():
+    if endpoint != CONF_CUSTOM:  # 排除自定义选项
+        service_name = config[CONF_NAME]
+        for model in config["models"]:
+            if model:  # 确保模型名称不为空
+                MODEL_OPTIONS[model] = f"{service_name} - {model}"
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
@@ -175,7 +185,7 @@ class ConversationFlowHandler(config_entries.ConfigSubentryFlow, HasAttrs):
         ]
         model = ""
         for m in SERVICES.get(base, {}).get("models", []):
-            if m not in added_models:
+            if m not in added_models and m:  # 确保模型名称不为空
                 model = m
                 break
         defaults = {
@@ -211,8 +221,25 @@ class ConversationFlowHandler(config_entries.ConfigSubentryFlow, HasAttrs):
             SelectOptionDict(label=api.name, value=api.id)
             for api in llm.async_get_apis(self.hass)
         ]
+        
+        # 创建模型选择选项
+        entry = self._get_entry()
+        base = entry.data.get(CONF_BASE, "")
+        model_options = []
+        
+        # 根据当前选择的端点获取对应的模型列表
+        if base in SERVICES:
+            for model in SERVICES[base]["models"]:
+                if model:  # 确保模型名称不为空
+                    service_name = SERVICES[base][CONF_NAME]
+                    model_options.append(
+                        SelectOptionDict(label=f"{service_name} - {model}", value=model)
+                    )
+        
         schema = {
-            vol.Required(CONF_MODEL): str,
+            vol.Required(CONF_MODEL): SelectSelector(
+                SelectSelectorConfig(options=model_options)
+            ),
             vol.Optional(CONF_NAME, default="Agent"): str,
             vol.Optional(CONF_PROMPT, default=""): TemplateSelector(),
             vol.Optional(CONF_LLM_HASS_API, default=[]):

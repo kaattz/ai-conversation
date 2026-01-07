@@ -24,3 +24,6 @@ CONF_PROMPT = "prompt"
 PLATFORMS = (
     Platform.CONVERSATION,
 )
+
+GLM_BOX_START = "<|begin_of_box|>"
+GLM_BOX_END = "<|end_of_box|>"
