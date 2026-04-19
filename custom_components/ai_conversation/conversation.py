@@ -115,7 +115,10 @@ class ConversationEntity(BasicEntity, BaseEntity):
             system_prompt = f'Reply in the specified language ({self.hass.config.language}).'
         
         # 根据模型类型决定是否使用thinking参数
-        should_use_thinking = thinking and thinking != "" and self.model.startswith("glm-4.5")
+        should_use_thinking = thinking and thinking != "" and (
+            self.model.startswith("glm-4.5") or
+            self.model.startswith("glm-4.6v")
+        )
 
         stop_value = None
         if stop not in (None, ""):

@@ -18,7 +18,7 @@ SERVICES = {
         CONF_NAME: "智谱AI",
         "models": [
             "glm-4.1v-thinking-flash", "glm-4.5-flash", "glm-4-flash-250414", "glm-4v-flash", "glm-z1-flash",
-            "glm-4.5v", "glm-4.6v-flash",
+            "glm-4.5v", "glm-4.6v", "glm-4.6v-flash", "glm-4.6v-flashx",
             "cogview-3-flash", "cogvideox-flash",
         ],
     },

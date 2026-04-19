@@ -22,9 +22,9 @@ class ChatCompletions(Dict):
     
     def set_thinking_if_needed(self, model, thinking_type=None):
         """根据模型类型决定是否添加thinking参数"""
-        # 只有glm-4.5和glm-4.5v模型需要thinking参数
-        if model and model.startswith("glm-4.5") and thinking_type:
-            # 根据官方文档，GLM-4.5的thinking参数应该是字典格式
+        # glm-4.5和glm-4.6v系列模型需要thinking参数
+        if model and (model.startswith("glm-4.5") or model.startswith("glm-4.6v")) and thinking_type:
+            # 根据官方文档，GLM-4.5和GLM-4.6v的thinking参数应该是字典格式
             if thinking_type == "enabled":
                 self["thinking"] = {"type": "enabled"}
             elif isinstance(thinking_type, dict) and "type" in thinking_type:
